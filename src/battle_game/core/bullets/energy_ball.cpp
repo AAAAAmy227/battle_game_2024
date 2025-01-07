@@ -45,7 +45,11 @@ void EnergyBall::Update() {
     game_core_->PushEventRemoveBullet(id_);
   }
 }
-
+/*
+uint32_t EnergyBall::GetManaPointConsumption() const {
+  return mana_point_consumption_;
+}
+*/
 EnergyBall::~EnergyBall() {
   for (int i = 0; i < 5; i++) {
     game_core_->PushEventGenerateParticle<particle::Smoke>(

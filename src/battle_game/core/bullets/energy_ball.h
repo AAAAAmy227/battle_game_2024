@@ -15,8 +15,10 @@ class EnergyBall : public Bullet {
   ~EnergyBall() override;
   void Render() override;
   void Update() override;
-
+  //[[nodiscard]] uint32_t GetManaPointConsumption() const;
+  static const uint32_t mana_point_consumption_{50};
  private:
   glm::vec2 velocity_{};
+  //uint32_t mana_point_consumption_{50};
 };
 }  // namespace battle_game::bullet

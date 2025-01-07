@@ -1,5 +1,5 @@
 #include "blitz.h"
-
+#include <algorithm>
 #include "battle_game/core/bullets/bullets.h"
 #include "battle_game/core/game_core.h"
 #include "battle_game/graphics/graphics.h"
@@ -9,6 +9,7 @@ namespace battle_game::unit {
 namespace {
 uint32_t tank_body_model_index = 0xffffffffu;
 uint32_t tank_turret_model_index = 0xffffffffu;
+uint32_t mana_bar_model_index = 0xffffffffu;
 }  // namespace
 
 Blitz::Blitz(GameCore *game_core, uint32_t id, uint32_t player_id)
@@ -68,6 +69,18 @@ Blitz::Blitz(GameCore *game_core, uint32_t id, uint32_t player_id)
           mgr->RegisterModel(turret_vertices, turret_indices);
     }
   }
+  if (!~mana_bar_model_index)
+  {
+    auto mgr = AssetsManager::GetInstance();
+    {
+      mana_bar_model_index = mgr->RegisterModel(
+          {{{-0.5f, 0.08f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}},
+           {{-0.5f, -0.08f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}},
+           {{0.5f, 0.08f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}},
+           {{0.5f, -0.08f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f, 1.0f}}},
+          {0, 1, 2, 1, 2, 3});
+    }
+  }
 }
 
 void Blitz::Render() {
@@ -75,16 +88,18 @@ void Blitz::Render() {
   battle_game::SetTexture(0);
   battle_game::SetColor(game_core_->GetPlayerColor(player_id_));
   if (mana_point_ == mana_point_max_)
-    battle_game::SetColor(glm::vec4{(0.7f)});
+    battle_game::SetColor(glm::vec4{0.0f,1.0f,1.0f,0.9f});
   battle_game::DrawModel(tank_body_model_index);
   battle_game::SetRotation(turret_rotation_);
   battle_game::DrawModel(tank_turret_model_index);
+  RenderManaBar();
 }
 
 void Blitz::Update() {
   TankMove(6.0f, glm::radians(180.0f));
   TurretRotate();
   Fire();
+  printf("mana_point: %d\n", mana_point_);
 }
 
 float Blitz::GetDamageScale() const {
@@ -151,22 +166,38 @@ void Blitz::Fire() {
             position_ + Rotate({0.0f, 1.2f}, turret_rotation_),
             turret_rotation_, GetDamageScale(), velocity);
         fire_count_down_ = kTickPerSecond;  // Fire interval 1 second.
-      } else if (input_data.key_down[GLFW_KEY_F] &&
-                 mana_point_ == mana_point_max_) {
-        
-        mana_point_ = 0;
-        auto velocity = Rotate(glm::vec2{0.0f, 20.0f}, turret_rotation_);
-        auto slow_velocity = Rotate(glm::vec2{0.0f, 10.0f}, turret_rotation_);
-        GenerateBullet<bullet::EnergyBall>(
-            position_ + Rotate({0.0f, 1.2f}, turret_rotation_),
-            turret_rotation_, GetDamageScale(), slow_velocity);
-        // fire_count_down_ = kTickPerSecond;  // Fire interval 1 second.
+      } 
       }
     }
-  }
   if (fire_count_down_) {
     fire_count_down_--;
   }
+  if (energy_ball_count_down_ == 0)
+
+  {
+    auto player = game_core_->GetPlayer(player_id_);
+    if (player) {
+      auto &input_data = player->GetInputData();
+      if (input_data.key_down[GLFW_KEY_F]) {
+        if (mana_point_ >= bullet::EnergyBall::mana_point_consumption_) {
+          mana_point_ -= bullet::EnergyBall::mana_point_consumption_;
+          printf("mana_point: %d,changed in blitz.cpp\n",
+                 mana_point_);  // debug
+          auto velocity = Rotate(glm::vec2{0.0f, 20.0f}, turret_rotation_);
+          auto slow_velocity = Rotate(glm::vec2{0.0f, 10.0f}, turret_rotation_);
+          GenerateBullet<bullet::EnergyBall>(
+              position_ + Rotate({0.0f, 1.2f}, turret_rotation_),
+              turret_rotation_, GetDamageScale(), slow_velocity);
+          energy_ball_count_down_ = kTickPerSecond/3;  // Fire interval 1 second.
+        }
+      }
+    }
+  }
+  if (energy_ball_count_down_) {
+  
+    energy_ball_count_down_--;
+  }
+
   if (doge_count_down_ == 0) {
     auto player = game_core_->GetPlayer(player_id_);
     if (player) {
@@ -203,16 +234,39 @@ float Blitz::GetSpeedScale() const {
 float Blitz::GetManaPoint() const {
   return 100.0f;
 }
-
-void Blitz::RenderLifeBar() {
-  Unit::RenderLifeBar();
+*/
+uint32_t Blitz::GetManaPoint() const {
+  return mana_point_;
+}
+float Blitz::GetMP() const {
+  return float(mana_point_) / float(mana_point_max_);
+}
+void Blitz::RenderManaBar() {
   if (manabar_display_) {
     auto parent_unit = game_core_->GetUnit(id_);
-    auto pos = parent_unit->GetPosition() + lifebar_offset_;
-    auto mana = GetManaPoint();
-
-
-  }*/
+    auto pos = parent_unit->GetPosition() + manabar_offset_;
+    auto MP = GetMP();
+    SetTransformation(pos, 0.0f, {manabar_length_, 1.0f});
+    SetColor(background_manabar_color_);
+    SetTexture(0);
+    DrawModel(mana_bar_model_index);
+    glm::vec2 shift = {(float)manabar_length_ * (1 - MP) / 2, 0.0f};
+    SetTransformation(pos - shift, 0.0f, {manabar_length_ * MP, 1.0f});
+    SetColor(front_manabar_color_);
+    DrawModel(mana_bar_model_index);
+    if (std::fabs(MP - fadeout_MP_) >= 0.01f) {
+      fadeout_MP_ =
+          MP + (fadeout_MP_ - MP) * 0.93;  // smooth the fadeout
+      shift = {manabar_length_ * (MP + fadeout_MP_ - 1) / 2, 0.0f};
+      SetTransformation(pos + shift, 0.0f,
+                        {manabar_length_ * (MP - fadeout_MP_), 1.0f});
+      SetColor(fadeout_manabar_color_);
+      DrawModel(mana_bar_model_index);
+    } else {
+      fadeout_MP_ = MP;
+    }
+  }
+}
 
 void Blitz::RenderHelper() {
 
